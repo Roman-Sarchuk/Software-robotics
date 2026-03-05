@@ -1,12 +1,12 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-// ----- LED pins (безпечні GPIO) -----
-const int greenPin  = 18;
-const int yellowPin = 19;
-const int redPin    = 23;
+// ----- LED pins -----
+const int greenPin  = 16;
+const int yellowPin = 17;
+const int redPin    = 18;
 
-// ----- LCD (адреса 0x27 найчастіша у Wokwi) -----
+// ----- LCD (I2C) -----
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void setup() {
