@@ -1,3 +1,13 @@
+/*
+
+Components:
+- freenove esp32 wrover
+- 3 LEDs (red, yellow, green)
+- 3 resistors (220 ohm)
+- LCD 16x2 with I2C module
+
+*/
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 

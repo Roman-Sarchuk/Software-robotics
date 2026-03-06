@@ -1,3 +1,13 @@
+/*
+
+Components:
+- Arduino Uno
+- 3 LEDs (red, yellow, green)
+- 3 resistors (220 ohm)
+- LCD 16x2 with I2C module
+
+*/
+
 #include <LiquidCrystal_I2C.h>
 
 const int greenPin = 4;
