@@ -2,21 +2,21 @@
 #include <LiquidCrystal_I2C.h>
 #include <Keypad.h>
 
-#define MAX_PASSWORD_LENGTH 6
-#define MAX_APARTMENT_LENGTH 3
-#define STRING_TERMINATOR '\0'
+// ----- LED pins -----
+const int greenPin  = 16;
+const int yellowPin = 17;
+const int redPin    = 18;
 
-#define BUZZER 27
-#define LED_GREEN 18
-#define LED_RED 19
-
-#define APARTMENT "19"
-#define PASSWORD "1234"
-
-Servo servo;
+// ----- LCD (I2C) -----
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// Матрична клавіатура 4x4
+// ----- Piezo pin -----
+const int piezoPin = 27;
+
+// ----- Servo -----
+Servo servo;
+
+// ----- Matrix Keypad -----
 const byte ROWS = 4;
 const byte COLS = 4;
 char keys[ROWS][COLS] = {
@@ -24,132 +24,157 @@ char keys[ROWS][COLS] = {
   {'4', '5', '6', 'B'},
   {'7', '8', '9', 'C'},
   {'*', '0', '#', 'D'}
-  // {'D', 'C', 'B', 'A'},
-  // {'#', '9', '6', '3'},
-  // {'0', '8', '5', '2'},
-  // {'*', '7', '4', '1'}
 };
-
-// Піни рядів та стовпців для ESP32
-byte rowPins[ROWS] = {32, 33, 25, 14};
-byte colPins[COLS] = {12, 13, 15, 2};
-// byte rowPins[ROWS] = {14, 25, 33, 32};
-// byte colPins[COLS] = {2, 15, 13, 12};
+const int rowPins[ROWS] = {32, 33, 25, 14};
+const int colPins[COLS] = {12, 13, 15, 2};
 
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
+// ----- params -----
+#define MAX_PASSWORD_LENGTH 4
+#define STRING_TERMINATOR '\0'
+#define APARTMENT_NUM "408"
+#define PASSWORD "1234"
+
+char passText[] = "Enter pass: ";
+int passTextLen;
+bool isPassTextDispalyed = false;
+bool isOpenedTextDisplayed = false;
+
 struct Entry {
-  char apartment[MAX_APARTMENT_LENGTH + 1] = "";
   char password[MAX_PASSWORD_LENGTH + 1] = "";
-  byte aptIndex = 0;
   byte passIndex = 0;
-  bool enteringApt = true;
-  bool apartmentConfirmed = false;
+  bool isOpened = false;
 } entry;
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(BUZZER, OUTPUT);
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_RED, OUTPUT);
+// melody
+struct Melody
+{
+  int frequencies[];
+  int durations[];
+  int size;
 
-  servo.attach(26);
-  servo.write(90); // закритий замок
-
-  lcd.init();
-  lcd.backlight();
-  welcomeMessage();
+  Melody(int frequencies[], durations[]) {
+    this.frequencies = frequencies;
+    this.durations = durations;
+    this.size = sizeof(frequencies) / sizeof(int)
+  }
 }
 
-void loop() {
-  lcd.setCursor(0, 0);
-  lcd.print(entry.enteringApt ? "ENTER APARTMENT: " : "ENTER PASSWORD: ");
+// Admitted melody
+const Melody admittedMelody = new Melody(
+  { 262, 262, 0, 262, 0, 196, 262, 330 },
+  { 125, 125, 125, 125, 125, 125, 125, 125 }
+);
+// Rejected melody
+const Melody rejectedMelody = new Melody(
+  { 196, 196, 196, 147 },
+  { 300, 300, 300, 600 }
+);
 
-  char key = keypad.getKey();
-  if (key != NO_KEY) {
-    processKey(key);
-  }
+// ----- My functions -----
+void playMelody(Melody melody) {
+  for (int i = 0; i < melody.size; i++)
+  {
+    tone(piezoPin, melody.frequencies[i], melody.durations[i]);
+  } 
 }
 
 void processKey(char key) {
-  if (key == 'C') {
-    resetEntry();
-  } else if (key == 'D') {
+  if (!entry.isOpened && key == 'A') {
     checkAccess();
-  } else {
-    if (entry.enteringApt) {
-      if (key == '#' && entry.aptIndex > 0) {
-        entry.enteringApt = false;
-        entry.apartmentConfirmed = true;
-        lcd.clear();
-      } else if (entry.aptIndex < MAX_APARTMENT_LENGTH && key != '#') {
-        entry.apartment[entry.aptIndex++] = key;
-        entry.apartment[entry.aptIndex] = STRING_TERMINATOR;
-        lcd.setCursor(6 + entry.aptIndex, 1);
-        lcd.print(key);
-      }
-    } else {
-      if (entry.passIndex < MAX_PASSWORD_LENGTH) {
-        entry.password[entry.passIndex++] = key;
-        entry.password[entry.passIndex] = STRING_TERMINATOR;
-        lcd.setCursor(5 + entry.passIndex, 1);
-        lcd.print('*');
-      }
-    }
+  } 
+  else if (!entry.isOpened && key == 'D') {
+    deleteEntry();
+  }
+  else if (!entry.isOpened && key == 'C') {
+    clearEntry();
+  }
+  else if (entry.isOpened && key == 'B') {
+    blockDoor();
+  }
+  else {
+    processPassEntry(key);
   }
 }
 
-void checkAccess() {
-  if (strcmp(entry.apartment, APARTMENT) == 0 && strcmp(entry.password, PASSWORD) == 0) {
+void processPassEntry(char value) {
+  if (entry.passIndex < MAX_PASSWORD_LENGTH) {
+    entry.password[entry.passIndex++] = value;
+    entry.password[entry.passIndex] = STRING_TERMINATOR;
+    lcd.setCursor(passTextLen + entry.passIndex, 1);
+    lcd.print('*');
+  }
+}
+
+void deleteEntry() {
+  if (entry.passIndex > 0) {
+    entry.password[entry.passIndex--] = '';
+    entry.password[entry.passIndex] = STRING_TERMINATOR;
+    lcd.setCursor(passTextLen + entry.passIndex, 1);
+    lcd.print(' ');
+  }
+}
+
+void clearEntry() {
+  memset(entry.password, 0, sizeof(entry.password));
+  entry.passIndex = 0;
+  lcd.setCursor(5 + entry.passIndex, 1);
+  for (int i = 0; i < MAX_PASSWORD_LENTH; i++) {
+    lcd.print(' ');
+  }
+}
+
+void checkAccess() {  // A
+  if (strcmp(entry.password, PASSWORD) == 0) {
     unlockDoor();
   } else {
     denyAccess();
   }
-  resetEntry();
 }
 
 void unlockDoor() {
-  for (int i = 0; i < 3; i++) {
-    tone(BUZZER, 300);
-    delay(200);
+  // admitted melody
+  for (int i = 0; i < admittedMelody.size; i++) {
+    tone(BUZZER, admittedMelody.frequencies);
+    delay(admittedMelody.durations);
     noTone(BUZZER);
-    delay(200);
   }
-  servo.write(0); // відкритий замок
-  lcd.clear();
+
+  servo.write(0); // open lock
+
   digitalWrite(LED_GREEN, HIGH);
-  lcd.setCursor(0, 0);
-  lcd.print("ACCESS GRANTED");
+
+  entry.isOpened = true;
+
+  clearLCD(1);
   lcd.setCursor(0, 1);
-  lcd.print("DOOR OPENED");
-  delay(2000);
-  digitalWrite(LED_GREEN, LOW);
-  servo.write(90); // закритий замок
-  lcd.clear();
+  lcd.print("ACCESS GRANTED");
+  delay(1000);
 }
 
 void denyAccess() {
-  tone(BUZZER, 500);
-  lcd.clear();
-  digitalWrite(LED_RED, HIGH);
-  lcd.setCursor(0, 0);
-  lcd.print("ACCESS DENIED!");
+  // rejected melody
+  for (int i = 0; i < rejectedMelody.size; i++) {
+    tone(BUZZER, rejectedMelody.frequencies);
+    delay(rejectedMelody.durations);
+    noTone(BUZZER);
+  }
+
+  clearLCD(1);
   lcd.setCursor(0, 1);
-  lcd.print("TRY AGAIN");
-  delay(2000);
-  digitalWrite(LED_RED, LOW);
-  lcd.clear();
-  noTone(BUZZER);
+  lcd.print("ACCESS DENIED");
+  delay(1000);
 }
 
-void resetEntry() {
-  memset(entry.apartment, 0, sizeof(entry.apartment));
-  memset(entry.password, 0, sizeof(entry.password));
-  entry.aptIndex = 0;
-  entry.passIndex = 0;
-  entry.enteringApt = true;
-  entry.apartmentConfirmed = false;
-  lcd.clear();
+void blockDoor() {
+  servo.write(90);
+
+  clearEntry();
+
+  clearLCD(1);
+
+  entry.isOpened = false;
 }
 
 void welcomeMessage() {
@@ -159,4 +184,64 @@ void welcomeMessage() {
   lcd.print("DOOR LOCK SYSTEM");
   delay(3000);
   lcd.clear();
+}
+
+void clearLCD(int rowIndex) {
+  lcd.setCursor(0, rowIndex);
+  lcd.print("                ");
+}
+
+// ----- Core function -----
+void setup() {
+  Serial.begin(115200);
+  
+  // LEDs
+  pinMode(greenPin, OUTPUT);
+  pinMode(yellowPin, OUTPUT);
+  pinMode(redPin, OUTPUT);
+
+  // Piezo
+  pinMode(piezoPin, OUTPUT);
+
+  // Sensor
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  // LCD
+  lcd.init();
+  lcd.backlight();
+
+  // Servo
+  servo.attach(26);
+  servo.write(90);
+
+  // other
+  lcd.clear();
+  welcomeMessage();
+
+  lcd.setCursor(0, 0);
+  lcd.print("Apartment #" + APARTMENT_NUM);
+
+  passTextLen = sizeof(passText) / sizeof(char);
+}
+
+void loop() {
+  if (!entry.isOpened && !isPassTextDispalyed)
+  {
+    clearLCD(1);
+    lcd.setCursor(0, 1);
+    lcd.print(passText);
+
+    isPassTextDispalyed = true;
+  }
+  if (entry.isOpened && !isOpenedTextDisplayed) {
+    clearLCD(1);
+    lcd.setCursor(0, 1);
+    lcd.print("Door is opened!");
+  }
+
+  char key = keypad.getKey();
+  if (key != NO_KEY) {
+    processKey(key);
+  }
 }
