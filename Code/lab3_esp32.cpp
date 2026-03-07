@@ -1,3 +1,16 @@
+/*
+
+Components:
+- freenove esp32 wrover
+- 2 LEDs (red, green)
+- 2 resistors (220 ohm)
+- LCD 16x2 with I2C module
+- Piezo buzzer
+- Servo motor
+- Keypad 4x4
+
+*/
+
 #include <ESP32Servo.h>
 #include <LiquidCrystal_I2C.h>
 #include <Keypad.h>

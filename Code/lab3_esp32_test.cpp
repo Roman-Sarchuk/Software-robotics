@@ -8,6 +8,7 @@ Components:
 - rgb led
 - 3 resistors (220 ohm)
 - Keypad 4x4
+- Potentiometer
 - Piezo buzzer
 
 */
