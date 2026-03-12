@@ -14,11 +14,18 @@ Components:
 */
 
 // ----- 74hc595 -----
+// #define HC_DATA 16
+// #define HC_LATCH 17
+// #define HC_CLOCK 18
 #define HC_DATA 19
 #define HC_LATCH 18
 #define HC_CLOCK 5
 
 // ----- seven segment display 4 digits -----
+// #define SSD_D1 19 
+// #define SSD_D2 21
+// #define SSD_D3 22
+// #define SSD_D4 23
 #define SSD_D1 25 
 #define SSD_D2 26
 #define SSD_D3 27
