@@ -9,14 +9,14 @@
 #include "pitches.h"
 
 /* Define pin numbers for LEDs, buttons and speaker: */
-const uint8_t buttonPins[] = {0, 1, 2, 3};
-const uint8_t ledPins[] = {8, 7, 6, 5};
-#define SPEAKER_PIN 10
+const uint8_t buttonPins[] = {13,12,14,27};
+const uint8_t ledPins[] = {23,22,25,26};
+#define SPEAKER_PIN 32
 
 // These are connected to 74HC595 shift register (used to show game score):
 const int LATCH_PIN = 18;  // 74HC595 pin 12
 const int DATA_PIN = 19;   // 74HC595 pin 14
-const int CLOCK_PIN = 9;  // 74HC595 pin 11
+const int CLOCK_PIN = 5;  // 74HC595 pin 11
 
 #define MAX_GAME_LENGTH 100
 
@@ -24,7 +24,7 @@ const int gameTones[] = { NOTE_G3, NOTE_C4, NOTE_E4, NOTE_G5};
 
 /* Global variables - store the game state */
 uint8_t gameSequence[MAX_GAME_LENGTH] = {0};
-uint8_t gameIndex = 12;
+uint8_t gameIndex = 21;
 
 /**
    Set up the Arduino board and initialize Serial communication
@@ -87,24 +87,43 @@ byte readButtons() {
   return -1;
 }
 
-/**
-   The main game loop
-*/
-byte button_answer = -1;
-void loop() {
-  // SSD1d x2
-  displayScore();
+int button_answer = 0;
+int nums[10] = {12,23,34,45,56,67,78,89,91,0};
 
+void test_SSD() {
+  for (int i = 0; i < 10; i++) {
+    gameIndex = nums[i];
+    displayScore();
+    delay(500);
+  }
+}
+void led_test() {
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(ledPins[i], HIGH);
+    delay(500);
+    digitalWrite(ledPins[i], LOW);
+  }
+}
+void button_test() {
   // buttons
   button_answer = readButtons();
 
   // leds
   for (byte i = 0; i < 4; i++) {
-    digitalWrite(ledPins[i], HIGH);
+    if (i == button_answer)
+      digitalWrite(ledPins[button_answer], HIGH);
+    else
+      digitalWrite(ledPins[i], LOW);
   }
-  if (button_answer != -1) {
-    digitalWrite(ledPins[button_answer], HIGH);
-  }
+}
 
+/**
+   The main game loop
+*/
+void loop() {
+  led_test();
 
+  // button_test();
+
+  // test_SSD();
 }
