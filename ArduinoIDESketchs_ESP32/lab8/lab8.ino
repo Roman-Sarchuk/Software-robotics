@@ -15,31 +15,30 @@
 
 // ─── PIN DEFINITIONS ────────────────────────────────────────────────────────
 
-#define SPEAKER_PIN   10
+#define SPEAKER_PIN   4
 
 // 74HC595 shift register
 #define LATCH_PIN     18
 #define DATA_PIN      19
-#define CLOCK_PIN      9
+#define CLOCK_PIN      5
 
 // HC-SR04 #1 — Entry sensor (detects approaching car BEFORE barrier)
-#define TRIG1         5
-#define ECHO1         4
+#define TRIG1         25
+#define ECHO1         26
 
 // HC-SR04 #2 — Pass-through sensor (detects car crossing AFTER barrier)
-#define TRIG2         7
-#define ECHO2         6
+#define TRIG2         27
+#define ECHO2         14
 
 // Servo (barrier gate)
-#define SERVO_PIN     8
+#define SERVO_PIN     12
 
 // RGB LED (common cathode)
-#define LED_R         1
-#define LED_G         0
-#define LED_B         3
+#define LED_R         21
+#define LED_G         22
+#define LED_B         23
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
-
 #define MAX_SPOTS          2       // Total parking spots
 #define DETECT_DISTANCE_CM 20     // Car detection threshold (cm)
 #define SERVO_OPEN         90     // Barrier open angle
