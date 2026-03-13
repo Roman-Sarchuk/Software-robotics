@@ -9,14 +9,14 @@
 #include "pitches.h"
 
 /* Define pin numbers for LEDs, buttons and speaker: */
-const uint8_t buttonPins[] = {13,12,14,27};
-const uint8_t ledPins[] = {23,22,25,26};
-#define SPEAKER_PIN 32
+const uint8_t buttonPins[] = {0, 1, 2, 3};
+const uint8_t ledPins[] = {8, 7, 6, 5};
+#define SPEAKER_PIN 10
 
 // These are connected to 74HC595 shift register (used to show game score):
 const int LATCH_PIN = 18;  // 74HC595 pin 12
 const int DATA_PIN = 19;   // 74HC595 pin 14
-const int CLOCK_PIN = 5;  // 74HC595 pin 11
+const int CLOCK_PIN = 9;  // 74HC595 pin 11
 
 #define MAX_GAME_LENGTH 100
 
@@ -30,7 +30,7 @@ uint8_t gameIndex = 0;
    Set up the Arduino board and initialize Serial communication
 */
 void setup() {
-  // Serial.begin(9600);
+  Serial.begin(9600);
   for (byte i = 0; i < 4; i++) {
     pinMode(ledPins[i], OUTPUT);
     pinMode(buttonPins[i], INPUT_PULLUP);
@@ -115,8 +115,8 @@ byte readButtons() {
   Play the game over sequence, and report the game score
 */
 void gameOver() {
-  // Serial.print("Game over! your score: ");
-  // Serial.println(gameIndex - 1);
+  Serial.print("Game over! your score: ");
+  Serial.println(gameIndex - 1);
   gameIndex = 0;
   delay(200);
 
