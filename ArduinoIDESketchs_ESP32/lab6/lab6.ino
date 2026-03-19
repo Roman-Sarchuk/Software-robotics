@@ -1,201 +1,147 @@
-/**
-   Simon Game for ESP32-C3 with Score display
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DHT.h>
 
-   Copyright (C) 2023, Uri Shaked
+// ===== WIFI =====
+const char* ssid = "YOUR_WIFI";
+const char* password = "YOUR_PASSWORD";
 
-   Released under the MIT License.
-*/
+WebServer server(80);
 
-#include "pitches.h"
+// ===== DHT22 =====
+#define DHTPIN 4
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
 
-/* Define pin numbers for LEDs, buttons and speaker: */
-const uint8_t buttonPins[] = {0, 1, 2, 3};
-const uint8_t ledPins[] = {8, 7, 6, 5};
-#define SPEAKER_PIN 10
+// ===== MQ2 =====
+#define MQ2_PIN 34
 
-// These are connected to 74HC595 shift register (used to show game score):
-const int LATCH_PIN = 18;  // 74HC595 pin 12
-const int DATA_PIN = 19;   // 74HC595 pin 14
-const int CLOCK_PIN = 9;  // 74HC595 pin 11
+// ===== LEDs =====
+#define GREEN_LED 16
+#define RED_LED 17
+#define BLUE_LED 5
+#define YELLOW_LED 2
 
-#define MAX_GAME_LENGTH 100
+// ===== BUZZER =====
+#define BUZZER 18
 
-const int gameTones[] = { NOTE_G3, NOTE_C4, NOTE_E4, NOTE_G5};
+// ===== BUTTON =====
+#define BUTTON 19
 
-/* Global variables - store the game state */
-uint8_t gameSequence[MAX_GAME_LENGTH] = {0};
-uint8_t gameIndex = 0;
+// ===== VARIABLES =====
+float temperature = 0;
+float humidity = 0;
+int gasValue = 0;
 
-/**
-   Set up the Arduino board and initialize Serial communication
-*/
+float lastTemp = 0;
+bool fireAlert = false;
+bool warning = false;
+bool buzzerMuted = false;
+
+// ===== HTML PAGE =====
+String getHTML() {
+  String html = "<!DOCTYPE html><html><head>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<meta http-equiv='refresh' content='3'>";
+  html += "<style>";
+  html += "body{font-family:Arial;text-align:center;background:#111;color:#fff;}";
+  html += ".card{background:#222;padding:20px;margin:10px;border-radius:10px;}";
+  html += ".led{display:inline-block;width:25px;height:25px;margin:5px;border-radius:50%;}";
+  html += ".green{background:lime;}";
+  html += ".red{background:red;}";
+  html += ".blue{background:blue;}";
+  html += ".yellow{background:yellow;}";
+  html += ".off{background:#444;}";
+  html += "</style></head><body>";
+
+  html += "<h1>ESP32 Air Monitor</h1>";
+  html += "<div class='card'>Temp: " + String(temperature) + " °C</div>";
+  html += "<div class='card'>Humidity: " + String(humidity) + " %</div>";
+  html += "<div class='card'>Gas: " + String(gasValue) + "</div>";
+
+  // LED display
+  html += "<h2>LED Status</h2>";
+  html += "<div>";
+  html += "<div class='led " + String(!warning && !fireAlert ? "green" : "off") + "'></div>";
+  html += "<div class='led " + String(fireAlert ? "red" : "off") + "'></div>";
+  html += "<div class='led " + String(buzzerMuted ? "blue" : "off") + "'></div>";
+  html += "<div class='led " + String(warning && !fireAlert ? "yellow" : "off") + "'></div>";
+  html += "</div>";
+
+  // Status text
+  if (fireAlert) html += "<h2 style='color:red'>🔥 FIRE ALERT</h2>";
+  else if (warning) html += "<h2 style='color:orange'>⚠️ WARNING</h2>";
+  else html += "<h2 style='color:lime'>✅ OK</h2>";
+
+  if (buzzerMuted) html += "<p>🔕 Sound Muted</p>";
+
+  html += "</body></html>";
+  return html;
+}
+
+// ===== SETUP =====
 void setup() {
-  Serial.begin(9600);
-  for (byte i = 0; i < 4; i++) {
-    pinMode(ledPins[i], OUTPUT);
-    pinMode(buttonPins[i], INPUT_PULLUP);
-  }
-  pinMode(SPEAKER_PIN, OUTPUT);
-  pinMode(LATCH_PIN, OUTPUT);
-  pinMode(CLOCK_PIN, OUTPUT);
-  pinMode(DATA_PIN, OUTPUT);
+  Serial.begin(115200);
 
-  // The following line primes the random number generator.
-  // It assumes pin 4 is floating (disconnected):
-  randomSeed(analogRead(4));
-}
+  dht.begin();
 
-/* Digit table for the 7-segment display */
-const uint8_t digitTable[] = {
-  0b11000000,
-  0b11111001,
-  0b10100100,
-  0b10110000,
-  0b10011001,
-  0b10010010,
-  0b10000010,
-  0b11111000,
-  0b10000000,
-  0b10010000,
-};
-const uint8_t DASH = 0b10111111;
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+  pinMode(YELLOW_LED, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
 
-void sendScore(uint8_t high, uint8_t low) {
-  digitalWrite(LATCH_PIN, LOW);
-  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, low);
-  shiftOut(DATA_PIN, CLOCK_PIN, MSBFIRST, high);
-  digitalWrite(LATCH_PIN, HIGH);
-}
-
-void displayScore() {
-  int high = gameIndex % 100 / 10;
-  int low = gameIndex % 10;
-  sendScore(high ? digitTable[high] : 0xff, digitTable[low]);
-}
-
-/**
-   Lights the given LED and plays a suitable tone
-*/
-void lightLedAndPlayTone(byte ledIndex) {
-  digitalWrite(ledPins[ledIndex], HIGH);
-  tone(SPEAKER_PIN, gameTones[ledIndex]);
-  delay(300);
-  digitalWrite(ledPins[ledIndex], LOW);
-  noTone(SPEAKER_PIN);
-}
-
-/**
-   Plays the current sequence of notes that the user has to repeat
-*/
-void playSequence() {
-  for (int i = 0; i < gameIndex; i++) {
-    byte currentLed = gameSequence[i];
-    lightLedAndPlayTone(currentLed);
-    delay(50);
-  }
-}
-
-/**
-    Waits until the user pressed one of the buttons,
-    and returns the index of that button
-*/
-byte readButtons() {
-  while (true) {
-    for (byte i = 0; i < 4; i++) {
-      byte buttonPin = buttonPins[i];
-      if (digitalRead(buttonPin) == LOW) {
-        return i;
-      }
-    }
-    delay(1);
-  }
-}
-
-/**
-  Play the game over sequence, and report the game score
-*/
-void gameOver() {
-  Serial.print("Game over! your score: ");
-  Serial.println(gameIndex - 1);
-  gameIndex = 0;
-  delay(200);
-
-  // Play a Wah-Wah-Wah-Wah sound
-  tone(SPEAKER_PIN, NOTE_DS5);
-  delay(300);
-  tone(SPEAKER_PIN, NOTE_D5);
-  delay(300);
-  tone(SPEAKER_PIN, NOTE_CS5);
-  delay(300);
-  for (byte i = 0; i < 10; i++) {
-    for (int pitch = -10; pitch <= 10; pitch++) {
-      tone(SPEAKER_PIN, NOTE_C5 + pitch);
-      delay(6);
-    }
-  }
-  noTone(SPEAKER_PIN);
-
-  sendScore(DASH, DASH);
-  delay(500);
-}
-
-/**
-   Get the user's input and compare it with the expected sequence.
-*/
-bool checkUserSequence() {
-  for (int i = 0; i < gameIndex; i++) {
-    byte expectedButton = gameSequence[i];
-    byte actualButton = readButtons();
-    lightLedAndPlayTone(actualButton);
-    if (expectedButton != actualButton) {
-      return false;
-    }
+  // WIFI
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
 
-  return true;
+  Serial.println("\nConnected!");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", []() {
+    server.send(200, "text/html", getHTML());
+  });
+
+  server.begin();
 }
 
-/**
-   Plays a hooray sound whenever the user finishes a level
-*/
-void playLevelUpSound() {
-  tone(SPEAKER_PIN, NOTE_E4);
-  delay(150);
-  tone(SPEAKER_PIN, NOTE_G4);
-  delay(150);
-  tone(SPEAKER_PIN, NOTE_E5);
-  delay(150);
-  tone(SPEAKER_PIN, NOTE_C5);
-  delay(150);
-  tone(SPEAKER_PIN, NOTE_D5);
-  delay(150);
-  tone(SPEAKER_PIN, NOTE_G5);
-  delay(150);
-  noTone(SPEAKER_PIN);
-}
-
-/**
-   The main game loop
-*/
+// ===== LOOP =====
 void loop() {
-  displayScore();
+  // ===== READ SENSORS =====
+  temperature = dht.readTemperature();
+  humidity = dht.readHumidity();
+  gasValue = analogRead(MQ2_PIN);
 
-  // Add a random color to the end of the sequence
-  gameSequence[gameIndex] = random(0, 4);
-  gameIndex++;
-  if (gameIndex >= MAX_GAME_LENGTH) {
-    gameIndex = MAX_GAME_LENGTH - 1;
-  }
+  // ===== LOGIC =====
+  warning = false;
+  fireAlert = false;
 
-  playSequence();
-  if (!checkUserSequence()) {
-    gameOver();
-  }
+  float tempRise = temperature - lastTemp;
 
-  delay(300);
+  if (gasValue > 2000 || temperature > 35) warning = true;
+  if (tempRise > 2.0 && gasValue > 2500) fireAlert = true;
 
-  if (gameIndex > 0) {
-    playLevelUpSound();
+  lastTemp = temperature;
+
+  // ===== BUTTON =====
+  if (digitalRead(BUTTON) == LOW) {
+    buzzerMuted = !buzzerMuted;
     delay(300);
   }
+
+  // ===== LED CONTROL =====
+  digitalWrite(GREEN_LED, !warning && !fireAlert);
+  digitalWrite(BLUE_LED, buzzerMuted);
+  digitalWrite(RED_LED, fireAlert ? (millis() % 500 < 250) : LOW);
+  digitalWrite(YELLOW_LED, warning && !fireAlert);
+
+  // ===== SERVER =====
+  server.handleClient();
+
+  delay(2000);
 }
