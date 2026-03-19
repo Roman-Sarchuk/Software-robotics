@@ -3,30 +3,30 @@
 #include <DHT.h>
 
 // ===== WIFI =====
-const char* ssid = "YOUR_WIFI";
-const char* password = "YOUR_PASSWORD";
+const char* ssid = "Qwerty";
+const char* password = "xyse0000";
 
 WebServer server(80);
 
 // ===== DHT22 =====
-#define DHTPIN 4
-#define DHTTYPE DHT22
+#define DHTPIN 13
+#define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
 
 // ===== MQ2 =====
 #define MQ2_PIN 34
 
 // ===== LEDs =====
-#define GREEN_LED 16
-#define RED_LED 17
-#define BLUE_LED 5
-#define YELLOW_LED 2
+#define BLUE_LED 23
+#define GREEN_LED 22
+#define YELLOW_LED 21
+#define RED_LED 19
 
 // ===== BUZZER =====
-#define BUZZER 18
+#define BUZZER 12
 
 // ===== BUTTON =====
-#define BUTTON 19
+#define BUTTON 18
 
 // ===== VARIABLES =====
 float temperature = 0;
@@ -69,11 +69,11 @@ String getHTML() {
   html += "</div>";
 
   // Status text
-  if (fireAlert) html += "<h2 style='color:red'>🔥 FIRE ALERT</h2>";
-  else if (warning) html += "<h2 style='color:orange'>⚠️ WARNING</h2>";
-  else html += "<h2 style='color:lime'>✅ OK</h2>";
+  if (fireAlert) html += "<h2 style='color:red'>FIRE ALERT</h2>";
+  else if (warning) html += "<h2 style='color:orange'>WARNING</h2>";
+  else html += "<h2 style='color:lime'>ALL GOOD</h2>";
 
-  if (buzzerMuted) html += "<p>🔕 Sound Muted</p>";
+  if (buzzerMuted) html += "<p>Sound Muted</p>";
 
   html += "</body></html>";
   return html;
