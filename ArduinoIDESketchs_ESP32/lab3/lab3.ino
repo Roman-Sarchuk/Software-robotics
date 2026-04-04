@@ -49,7 +49,7 @@ byte colPins[COLS] = {0, 2, 15, 12};
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
 // ----- Buzzer -----
-#define BUZZER 5
+#define BUZZER 4
 
 
 // ----- params -----
