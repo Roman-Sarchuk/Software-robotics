@@ -1,9 +1,16 @@
-/**
-   Simon Game for ESP32-C3 with Score display
+/*
 
-   Copyright (C) 2023, Uri Shaked
+Components:
+- freenove esp32 wrover
+- 74hc595 shift register x2
+- 7-segment display (1 digit) x2
+- 14 resistors (220 ohm)
+- 4 LEDs (red, green, blue, yellow)
+- 4 resistors (220 ohm)
+- 4 buttons
+- Piezo buzzer
+Based on Simon Game from Uri Shaked
 
-   Released under the MIT License.
 */
 
 #include "pitches.h"
@@ -115,8 +122,6 @@ byte readButtons() {
   Play the game over sequence, and report the game score
 */
 void gameOver() {
-  // Serial.print("Game over! your score: ");
-  // Serial.println(gameIndex - 1);
   gameIndex = 0;
   delay(200);
 
