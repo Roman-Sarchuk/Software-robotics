@@ -9,7 +9,7 @@ Components:
 - 4 resistors (220 ohm)
 - 4 buttons
 - Piezo buzzer
-Based on Simon Game from Uri Shaked
+Based on Simon Game by Uri Shaked
 
 */
 
