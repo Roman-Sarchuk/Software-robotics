@@ -4,6 +4,7 @@ Components:
 - freenove esp32 wrover
 - HC-SR04 x2
 - 2 resistors (1 kOhm)
+- 2 registers (2 kOhm)
 - 7-segment display (1 digit) x2
 - 14 resistors (220 ohm)
 - RGB LED
