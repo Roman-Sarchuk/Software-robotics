@@ -1,6 +1,20 @@
+/*
+
+Components:
+- freenove esp32 wrover
+- DHT11
+- MQ2
+- 4 LEDs (red, green, blue, yellow)
+- 4 resistors (220 ohm)
+- Button
+- Piezo buzzer
+
+*/
+
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DHT.h>
+
 
 // ===== WIFI =====
 const char* ssid = "Qwerty";
