@@ -5,7 +5,7 @@
  *
  *  Hardware:
  *   • 8×8 LED Matrix    via 2× daisy-chained 74HC595  (U1 = Rows, U2 = Cols)
- *   • 2-digit 7-Segment via 2× daisy-chained 74HC595  (U1 = Tens, U2 = Units)
+ *   • 1-digit 7-Segment 2x via 2× daisy-chained 74HC595  (U1 = Tens, U2 = Units)
  *   • Analog Joystick   (VRX, VRY, SW push-button — INPUT_PULLUP)
  *   • Red  LED (active HIGH) ─ Game-Over indicator
  *   • Blue LED (active HIGH) ─ Paused / Win indicator
@@ -51,24 +51,24 @@
 
 /* Snake game */
 
-// ----- 74HC595 (seven-segment display) -----
-#define SSD_HC_DATA   0
-#define SSD_HC_LATCH  0
-#define SSD_HC_CLOCK  0
+// ----- 74HC595 (seve g-ment display) -----
+#define SSD_HC_DATA   13
+#define SSD_HC_LATCH  18
+#define SSD_HC_CLOCK  19
 
 // ----- 74HC595 (led matrix 8x8) -----
-#define LM_HC_DATA    0
-#define LM_HC_LATCH   0
-#define LM_HC_CLOCK   0
+#define LM_HC_DATA    25
+#define LM_HC_LATCH   26
+#define LM_HC_CLOCK   27
 
 // ----- LEDs (active HIGH) -----
-#define LED_R  0    // Red  LED → Game Over
-#define LED_B  0    // Blue LED → Paused | Win
+#define LED_R  21    // Red  LED → Game Over
+#define LED_B  22    // Blue LED → Paused | Win
 
 // ----- Joystick -----
-#define VRX  0      // Analog X axis  (ESP32 12-bit ADC → 0–4095)
-#define VRY  0      // Analog Y axis
-#define SW   0      // Push-button   (INPUT_PULLUP; pressed = LOW)
+#define VRX  34      // Analog X axis  (ESP32 12-bit ADC → 0–4095)
+#define VRY  35      // Analog Y axis
+#define SW   32      // Push-button   (INPUT_PULLUP; pressed = LOW)
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  SECTION 2 — CONFIGURABLE HARDWARE LOGIC FLAGS
@@ -245,58 +245,42 @@ void    blankMatrix();
 
 void setup() {
     Serial.begin(115200);
+    delay(2000); // Дай ESP32 час "очухатись" після подачі живлення
+    Serial.println("--- Booting Snake Game ---");
 
-    // ── 74HC595 — 7-segment display ──────────────────────────────────────────
+    // Ініціалізація пінів
     pinMode(SSD_HC_DATA,  OUTPUT);
     pinMode(SSD_HC_LATCH, OUTPUT);
     pinMode(SSD_HC_CLOCK, OUTPUT);
-    digitalWrite(SSD_HC_LATCH, LOW);
-
-    // ── 74HC595 — 8×8 LED matrix ─────────────────────────────────────────────
-    pinMode(LM_HC_DATA,  OUTPUT);
-    pinMode(LM_HC_LATCH, OUTPUT);
-    pinMode(LM_HC_CLOCK, OUTPUT);
-    digitalWrite(LM_HC_LATCH, LOW);
-
-    // ── Status LEDs ───────────────────────────────────────────────────────────
-    pinMode(LED_R, OUTPUT);  digitalWrite(LED_R, LOW);
-    pinMode(LED_B, OUTPUT);  digitalWrite(LED_B, HIGH); // Blue ON → starts PAUSED
-
-    // ── Joystick ──────────────────────────────────────────────────────────────
+    pinMode(LM_HC_DATA,   OUTPUT);
+    pinMode(LM_HC_LATCH,  OUTPUT);
+    pinMode(LM_HC_CLOCK,  OUTPUT);
+    pinMode(LED_R, OUTPUT); digitalWrite(LED_R, LOW);
+    pinMode(LED_B, OUTPUT); digitalWrite(LED_B, HIGH);
     pinMode(SW, INPUT_PULLUP);
-    analogReadResolution(12);  // ESP32 ADC: 12-bit resolution → 0–4095
+    analogReadResolution(12);
 
-    // ── FreeRTOS synchronisation ──────────────────────────────────────────────
+    // Створення м'ютекса
     matrixMutex = xSemaphoreCreateMutex();
-    configASSERT(matrixMutex != nullptr);
+    if (matrixMutex != nullptr) {
+        Serial.println("1. Mutex OK");
+    } else {
+        Serial.println("!!! Mutex FAIL");
+    }
 
-    // ── Initial game state ────────────────────────────────────────────────────
+    // Початковий стан гри
     resetGame();
     writeSSD(0);
 
-    // ── Launch FreeRTOS tasks ─────────────────────────────────────────────────
+    // Створюємо задачі ТІЛЬКИ ОДИН РАЗ
+    // Обидві на Core 1 для чистоти тесту
+    xTaskCreatePinnedToCore(taskDisplay, "Display", 2048, nullptr, configMAX_PRIORITIES - 1, nullptr, 1);
+    Serial.println("2. Display Task started");
 
-    // Core 1 — Display multiplexing (maximum priority for zero-flicker LEDs)
-    xTaskCreatePinnedToCore(
-        taskDisplay,
-        "Display",
-        2048,                        // Stack in bytes (display logic is lightweight)
-        nullptr,
-        configMAX_PRIORITIES - 1,    // Highest possible priority
-        nullptr,
-        1                            // Core 1
-    );
-
-    // Core 0 — Game logic (lower priority; heavier stack for game data)
-    xTaskCreatePinnedToCore(
-        taskGameLogic,
-        "GameLogic",
-        4096,                        // Stack in bytes
-        nullptr,
-        2,                           // Priority 2 (below display)
-        nullptr,
-        0                            // Core 0
-    );
+    xTaskCreatePinnedToCore(taskGameLogic, "GameLogic", 4096, nullptr, 2, nullptr, 1);
+    Serial.println("3. GameLogic Task started");
+    
+    Serial.println("--- Setup Finished ---");
 }
 
 // loop() is intentionally empty — all work lives in FreeRTOS tasks.
@@ -323,36 +307,32 @@ void loop() {
  */
 void taskDisplay(void* pvParam) {
     (void)pvParam;
-
-    // Persistent local copy of the display buffer for the current scan cycle.
     static uint8_t localBuf[8] = {0};
+    uint8_t row = 0;
 
     while (true) {
-        // ── Snapshot shared buffer ────────────────────────────────────────
-        // A 2 ms timeout is generous: the game-logic task holds the mutex only
-        // for a memcpy of 8 bytes (nanoseconds in practice).
-        if (xSemaphoreTake(matrixMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
-            memcpy(localBuf, (const uint8_t*)matrixBuffer, 8);
-            xSemaphoreGive(matrixMutex);
-        }
-        // On timeout: localBuf retains its previous value (1-frame tolerance).
-
-        // ── Multiplex all 8 rows ──────────────────────────────────────────
-        for (uint8_t row = 0; row < 8; row++) {
-            writeMatrixRow(row, localBuf[row]);
-            delayMicroseconds(MX_ROW_HOLD_US);
+        // 1. Snapshot the buffer and update 7-seg once per full frame
+        if (row == 0) {
+            // Use 0 ticks to avoid blocking the display thread if mutex is busy
+            if (xSemaphoreTake(matrixMutex, 0) == pdTRUE) {
+                memcpy(localBuf, (const uint8_t*)matrixBuffer, 8);
+                xSemaphoreGive(matrixMutex);
+            }
+            writeSSD(displayScore);
         }
 
-        // Blank the matrix between scan cycles to prevent the last active row
-        // from ghosting through the idle gap before the next scan starts.
+        // 2. Blank matrix right BEFORE writing to prevent ghosting between rows
         blankMatrix();
+        
+        // 3. Light up the current row
+        writeMatrixRow(row, localBuf[row]);
 
-        // ── Refresh 7-segment display (once per full scan) ─────────────────
-        // displayScore is volatile uint8_t → single-instruction read (atomic).
-        writeSSD(displayScore);
+        // 4. Advance row counter
+        row = (row + 1) % 8;
 
-        // Yield to allow any other Core-1 tasks to run if they exist.
-        taskYIELD();
+        // 5. CRITICAL FIX: Sleep for 1 tick (~1ms) to let GameLogic and IDLE tasks run
+        // 8 rows * 1ms = 8ms per frame -> ~125 Hz refresh rate (flicker-free)
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
@@ -394,6 +374,7 @@ void taskGameLogic(void* pvParam) {
     bool     freshPress    = false;  // Set true for exactly one 10 ms tick on press
 
     while (true) {
+        Serial.println("Logic Heartbeat");
         uint32_t now = millis();
 
         // ====================================================================
@@ -414,6 +395,7 @@ void taskGameLogic(void* pvParam) {
                 stableBtn = rawBtn;
                 if (stableBtn == LOW) {     // LOW = pressed (active-low pull-up)
                     freshPress = true;
+                    Serial.println("BUTTON PRESSED!"); // ДОДАЙ ЦЕЙ РЯДОК
                 }
             }
         }
@@ -642,19 +624,35 @@ bool isOnSnake(int8_t x, int8_t y) {
  * @param idx  Index into applePos[] to update (0 … NUM_APPLES-1).
  */
 void placeApple(uint8_t idx) {
-    if (snakeLen >= 64) return;  // Board completely full (WIN state); nothing to do.
+    if (snakeLen >= 64) return;  // Board completely full
 
     int8_t ax, ay;
-    bool   busy;
+    bool busy;
+    uint8_t attempts = 0;
+
     do {
-        ax   = (int8_t)random(8);   // 0–7
-        ay   = (int8_t)random(8);   // 0–7
+        ax = (int8_t)random(8);
+        ay = (int8_t)random(8);
         busy = isOnSnake(ax, ay);
 
-        // Also avoid landing on an already-placed apple.
+        // Check if landing on another apple
         for (uint8_t j = 0; j < NUM_APPLES && !busy; j++) {
             if (j != idx && applePos[j].x == ax && applePos[j].y == ay) {
                 busy = true;
+            }
+        }
+
+        attempts++;
+        // FAIL-SAFE: If RNG is stuck during boot, force a linear scan
+        if (attempts > 50) {
+            for(int8_t y = 0; y < 8 && busy; y++) {
+                for(int8_t x = 0; x < 8 && busy; x++) {
+                    if(!isOnSnake(x, y)) {
+                        ax = x; 
+                        ay = y;
+                        busy = false; // Force exit
+                    }
+                }
             }
         }
     } while (busy);
